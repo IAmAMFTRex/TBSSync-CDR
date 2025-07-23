@@ -1,0 +1,2 @@
+# This file ensures the bak directory is tracked by git
+# Backup JSON files stored here contain processed CDR data

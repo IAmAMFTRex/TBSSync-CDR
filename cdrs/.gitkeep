@@ -1,0 +1,2 @@
+# This file ensures the cdrs directory is tracked by git
+# CDR files downloaded here are temporary and should not be committed
