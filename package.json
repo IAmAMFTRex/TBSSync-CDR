@@ -1,0 +1,26 @@
+{
+  "name": "tbssync-cdr",
+  "version": "1.0.0",
+  "description": "A Node.js application that downloads, processes, and stores Call Detail Records (CDRs) from VoIP Innovations into a Microsoft SQL Server database for billing purposes.",
+  "main": "VI_GetCDRs.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IAmAMFTRex/TBSSync-CDR.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/IAmAMFTRex/TBSSync-CDR/issues"
+  },
+  "homepage": "https://github.com/IAmAMFTRex/TBSSync-CDR#readme",
+  "dependencies": {
+    "basic-ftp": "^5.0.5",
+    "dotenv": "^17.2.1",
+    "mssql": "^11.0.1",
+    "nodemailer": "^7.0.5",
+    "papaparse": "^5.5.3"
+  }
+}
