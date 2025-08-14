@@ -7,6 +7,7 @@
  *   node VI_GetCDRs_Retroactive.js 2025-01-13 2025-01-15
  * 
  * Enhanced with service number support for emergency calls (911) and directory assistance (411)
+ * + FTP connection optimization (eliminates failed connection attempts)
  */
 
 require('dotenv').config();
@@ -282,20 +283,133 @@ function formatDateForFolder(date) {
 async function downloadCDRsForDate(date) {
   const client = new ftp.Client();
   client.ftp.verbose = false;
+  
+  // Configure timeouts and passive mode
+  client.ftp.timeout = 30000; // 30 second timeout
+  client.ftp.ipFamily = 4; // Force IPv4
 
   const folderName = formatDateForFolder(date);
   console.log(`\n=== Processing ${date.toDateString()} (folder: ${folderName}) ===`);
 
   try {
-    await client.access({
-      host: process.env.FTP_HOST,
-      user: process.env.FTP_USER,
-      password: process.env.FTP_PASSWORD,
-      secure: process.env.FTP_SECURE === 'true',
-    });
+    console.log(`Attempting FTP connection to ${process.env.FTP_HOST} (secure: ${process.env.FTP_SECURE})`);
+    
+    // Check if optimized connection is enabled (default: true)
+    const useOptimizedConnection = process.env.FTP_OPTIMIZED_CONNECTION !== 'false';
+    
+    if (useOptimizedConnection) {
+      // Use the proven working connection method directly
+      console.log(`🔐 Connecting using standard FTPS on port 21 (optimized mode)...`);
+      
+      try {
+        await client.access({
+          host: process.env.FTP_HOST,
+          user: process.env.FTP_USER,
+          password: process.env.FTP_PASSWORD,
+          secure: true,
+          port: 21,
+          secureOptions: {
+            rejectUnauthorized: false,
+            checkServerIdentity: () => undefined,
+            servername: process.env.FTP_HOST
+          }
+        });
+        console.log(`✅ Standard FTPS connection established`);
+        
+        // Configure passive mode settings after connection
+        client.ftp.pasv = true; // Enable passive mode
+      } catch (connectionError) {
+        console.error(`❌ FTPS connection failed: ${connectionError.message}`);
+        throw new Error(`Failed to establish FTPS connection: ${connectionError.message}`);
+      }
+    } else {
+      // Legacy mode: Try multiple connection approaches
+      console.log(`🔐 Using legacy connection mode with multiple attempts...`);
+      let connected = false;
+      
+      // Approach 1: Explicit FTPS (STARTTLS on port 21)
+      if (!connected) {
+        try {
+          console.log(`🔐 Trying explicit FTPS (STARTTLS)...`);
+          await client.access({
+            host: process.env.FTP_HOST,
+            user: process.env.FTP_USER,
+            password: process.env.FTP_PASSWORD,
+            secure: "explicit",
+            secureOptions: {
+              rejectUnauthorized: false,
+              checkServerIdentity: () => undefined
+            }
+          });
+          console.log(`✅ Explicit FTPS connection established`);
+          connected = true;
+        } catch (explicitError) {
+          console.log(`⚠️  Explicit FTPS failed: ${explicitError.message}`);
+        }
+      }
+      
+      // Approach 2: Implicit FTPS (SSL from start, usually port 990)
+      if (!connected) {
+        try {
+          console.log(`🔐 Trying implicit FTPS...`);
+          await client.access({
+            host: process.env.FTP_HOST,
+            user: process.env.FTP_USER,
+            password: process.env.FTP_PASSWORD,
+            secure: true,
+            port: 990,
+            secureOptions: {
+              rejectUnauthorized: false,
+              checkServerIdentity: () => undefined
+            }
+          });
+          console.log(`✅ Implicit FTPS connection established`);
+          connected = true;
+        } catch (implicitError) {
+          console.log(`⚠️  Implicit FTPS failed: ${implicitError.message}`);
+        }
+      }
+      
+      // Approach 3: Standard FTPS on port 21
+      if (!connected) {
+        try {
+          console.log(`🔐 Trying standard FTPS on port 21...`);
+          await client.access({
+            host: process.env.FTP_HOST,
+            user: process.env.FTP_USER,
+            password: process.env.FTP_PASSWORD,
+            secure: true,
+            port: 21,
+            secureOptions: {
+              rejectUnauthorized: false,
+              checkServerIdentity: () => undefined,
+              servername: process.env.FTP_HOST
+            }
+          });
+          console.log(`✅ Standard FTPS connection established`);
+          
+          // Configure passive mode settings after connection
+          client.ftp.pasv = true; // Enable passive mode
+          connected = true;
+        } catch (standardError) {
+          console.log(`⚠️  Standard FTPS failed: ${standardError.message}`);
+        }
+      }
+      
+      if (!connected) {
+        throw new Error("All FTPS connection methods failed");
+      }
+    }
 
     console.log(`Connecting to FTP folder: /${folderName}/`);
-    await client.cd("/" + folderName + "/");
+    
+    try {
+      await client.cd("/" + folderName + "/");
+    } catch (cdError) {
+      console.log(`⚠️  Folder /${folderName}/ not found or inaccessible: ${cdError.message}`);
+      client.close();
+      return null;
+    }
 
     // Create date-specific directory
     const dateDir = `./cdrs/${folderName}`;
@@ -303,8 +417,35 @@ async function downloadCDRsForDate(date) {
       fs.mkdirSync(dateDir, { recursive: true });
     }
 
-    await client.downloadToDir(dateDir);
-    console.log(`✅ Downloaded CDRs for ${date.toDateString()}`);
+    // Try download with retry logic for passive mode issues
+    let downloadSuccess = false;
+    let retryCount = 0;
+    const maxRetries = 3;
+    
+    while (!downloadSuccess && retryCount < maxRetries) {
+      try {
+        console.log(`📥 Attempting download (attempt ${retryCount + 1}/${maxRetries})...`);
+        await client.downloadToDir(dateDir);
+        downloadSuccess = true;
+        console.log(`✅ Downloaded CDRs for ${date.toDateString()}`);
+      } catch (downloadError) {
+        retryCount++;
+        console.log(`⚠️  Download attempt ${retryCount} failed: ${downloadError.message}`);
+        
+        if (retryCount < maxRetries) {
+          console.log(`🔄 Retrying in 2 seconds...`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Try switching to active mode for retry
+          if (retryCount === 2) {
+            console.log(`🔄 Switching to active mode for retry...`);
+            client.ftp.pasv = false;
+          }
+        } else {
+          throw downloadError;
+        }
+      }
+    }
 
     client.close();
     return dateDir;

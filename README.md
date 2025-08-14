@@ -15,6 +15,7 @@ This system automates the daily processing of telecom billing data by:
 ## Features
 
 - **Automated FTP Download**: Secure connection to VoIP Innovations CDR server
+- **Optimized FTP Connections**: Direct connection to proven working method (eliminates failed connection attempts)
 - **Data Processing**: Phone number cleaning, timezone conversion, data validation
 - **Service Number Support**: Preserves 3-digit emergency and service numbers
 - **Database Integration**: Efficient SQL Server storage with deduplication
@@ -58,6 +59,7 @@ The system includes powerful retroactive processing capabilities to recover hist
 #### 1. VI_GetCDRs_Retroactive.js - Historical FTP Download
 Downloads and processes CDRs for specific dates or date ranges directly from VoIP Innovations FTP server.
 
+Y
 **Usage:**
 ```bash
 # Process single date
@@ -286,6 +288,37 @@ Date Range → FTP Download → Enhanced Processing → Database Insert
                             Backup & Statistics
 ```
 
+### FTP Connection Optimization
+
+The system now includes intelligent FTP connection optimization that eliminates unnecessary connection attempts:
+
+#### Before Optimization (Legacy Mode)
+```
+❌ Attempt 1: Explicit FTPS (STARTTLS) - Fails: "550 SSL/TLS required"
+❌ Attempt 2: Implicit FTPS (port 990) - Fails: "Connection timeout"
+✅ Attempt 3: Standard FTPS (port 21) - Succeeds
+```
+
+#### After Optimization (Default Mode)
+```
+✅ Direct connection: Standard FTPS (port 21) - Succeeds immediately
+```
+
+#### Benefits
+- **Faster Processing**: Eliminates 2-3 failed connection attempts per date
+- **Cleaner Logs**: No more warning messages about failed connection methods
+- **Improved Reliability**: Direct connection to proven working method
+- **Configurable**: Can be disabled for troubleshooting if needed
+
+#### Configuration
+```env
+# Enable optimized connections (default: true)
+FTP_OPTIMIZED_CONNECTION=true
+
+# Disable to use legacy multiple-attempt mode
+FTP_OPTIMIZED_CONNECTION=false
+```
+
 ### Key Components
 
 1. **VI_GetCDRs.js** - Main application file
@@ -350,6 +383,10 @@ FTP_HOST=customercdr.voipinnovations.com
 FTP_USER=your_ftp_username
 FTP_PASSWORD=your_ftp_password
 FTP_SECURE=true
+
+# FTP Connection Optimization (Optional - Default: true)
+# Set to false to enable legacy multiple connection attempts
+FTP_OPTIMIZED_CONNECTION=true
 ```
 
 #### SMTP Alerting
