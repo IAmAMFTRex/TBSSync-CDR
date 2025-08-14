@@ -53,6 +53,9 @@ async function VoIPCDRs() {
       user: process.env.FTP_USER,
       password: process.env.FTP_PASSWORD,
       secure: process.env.FTP_SECURE === 'true',
+      secureOptions: {
+        rejectUnauthorized: false // Accept self-signed certificates
+      }
     });
 
     client.trackProgress((info) => {
